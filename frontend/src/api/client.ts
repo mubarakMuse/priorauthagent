@@ -98,7 +98,7 @@ export const waitForJob = async (
 ): Promise<PipelineResponse> => {
   const started = Date.now()
 
-  while Date.now() - started < MAX_POLL_MS) {
+  while (Date.now() - started < MAX_POLL_MS) {
     const status = await getJobStatus(jobId)
     onStatusChange?.(status.status)
 
