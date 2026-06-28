@@ -1,288 +1,112 @@
-import { useState } from "react";
-import type { PipelineResponse } from "./types";
-import "./App.css";
-const API_BASE = import.meta.env.VITE_API_BASE ?? ""
-const API_URL = `${API_BASE}/api/process`
-const PDF_API_URL = `${API_BASE}/api/process-pdf`
+import { useState } from "react"
+import { processClinicalNote, processPdf } from "./api/client"
+import { InputPanel } from "./components/input/InputPanel"
+import { Header } from "./components/layout/Header"
+import { ResultsView } from "./components/results/ResultsView"
+import { LoadingState } from "./components/ui/LoadingState"
+import { SAMPLE_NOTE } from "./constants/sampleNote"
+import type { InputMode, PipelineResponse } from "./types"
 
+const App = () => {
+  const [mode, setMode] = useState<InputMode>("note")
+  const [note, setNote] = useState(SAMPLE_NOTE)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [result, setResult] = useState<PipelineResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-const parseErrorDetail = async (response: Response, fallback: string): Promise<string> => {
-  const contentType = response.headers.get("content-type") ?? ""
-  if (contentType.includes("application/json")) {
-    const err = await response.json()
-    return err.detail || fallback
-  }
+  const handleSubmitNote = async () => {
+    setLoading(true)
+    setError(null)
+    setResult(null)
 
-  const text = await response.text()
-  if (text.includes("504 Gateway Time-out")) {
-    return "The API timed out — the server may still be starting. Try again in a minute."
-  }
-
-  return text.slice(0, 200) || `${fallback} (HTTP ${response.status})`
-}
-
-const SAMPLE_NOTE = `Patient: 58yo male
-Chief complaint: Progressive knee pain, 6 months
-
-Assessment:
-- Primary osteoarthritis of right knee (M17.11)
-- Failed conservative management (NSAIDs, PT x 8 weeks)
-
-Plan:
-- Refer for total knee arthroplasty, right knee (CPT 27447)
-- Continue meloxicam 15mg daily until surgery`;
-
-function App() {
-
-// inside App():
-const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [note, setNote] = useState(SAMPLE_NOTE);
-  const [result, setResult] = useState<PipelineResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function handlePdfSubmit() {
-    if (!selectedFile) return;
-  
-    setLoading(true);
-    setError(null);
-    setResult(null);
-  
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-  
-      const response = await fetch(PDF_API_URL, {
-        method: "POST",
-        body: formData,  // no Content-Type header — browser sets multipart boundary
-      });
-  
-      if (!response.ok) {
-        throw new Error(await parseErrorDetail(response, "PDF upload failed"))
-      }
-  
-      const data: PipelineResponse = await response.json();
-      setResult(data);
+      const data = await processClinicalNote(note)
+      setResult(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
-  
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    setSelectedFile(file);
-    setError(null);
-  }
-  async function handleSubmit() {
-    setLoading(true);
-    setError(null);
-    setResult(null);
+
+  const handleSubmitPdf = async () => {
+    if (!selectedFile) return
+
+    setLoading(true)
+    setError(null)
+    setResult(null)
 
     try {
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinical_note: note }),
-      });
-
-      if (!response.ok) {
-        throw new Error(await parseErrorDetail(response, "Request failed"))
-      }
-
-      const data: PipelineResponse = await response.json();
-      setResult(data);
+      const data = await processPdf(selectedFile)
+      setResult(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   return (
-    <div className="container">
-      <header>
-        <h1>Prior Auth Agent</h1>
-        <p>Paste a clinical note → extract → match rules → generate request</p>
-      </header>
-      <div className="upload-section">
-  <label htmlFor="pdf">Or upload a PDF</label>
-  <input
-    id="pdf"
-    type="file"
-    accept=".pdf,application/pdf"
-    onChange={handleFileChange}
-  />
-  {selectedFile && <p className="file-name">Selected: {selectedFile.name}</p>}
-  <button
-    onClick={handlePdfSubmit}
-    disabled={loading || !selectedFile}
-    className="secondary-btn"
-  >
-    {loading ? "Processing..." : "Run Pipeline from PDF"}
-  </button>
-</div>
+    <div className="gradient-bg min-h-screen">
+      <Header />
 
-<hr className="divider" />
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+          <InputPanel
+            mode={mode}
+            onModeChange={setMode}
+            note={note}
+            onNoteChange={setNote}
+            selectedFile={selectedFile}
+            onFileChange={setSelectedFile}
+            loading={loading}
+            onSubmitNote={handleSubmitNote}
+            onSubmitPdf={handleSubmitPdf}
+          />
 
-<label htmlFor="note">Or paste clinical note</label>
-{/* existing textarea + Run Pipeline button */}
-      <section className="input-section">
-        <label htmlFor="note">Clinical Note</label>
-        <textarea
-          id="note"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={12}
-          placeholder="Paste clinical note here..."
-        />
-        <button onClick={handleSubmit} disabled={loading || !note.trim()}>
-          {loading ? "Processing..." : "Run Pipeline"}
-        </button>
-      </section>
-
-      {error && <div className="error">{error}</div>}
-
-      {result && (
-        <div className="results">
-          <section className="card">
-            <h2>Extraction</h2>
-            <p className="summary">{result.extraction.patient_summary}</p>
-
-            <h3>Diagnoses</h3>
-            <ul>
-              {result.extraction.diagnoses.map((d, i) => (
-                <li key={i}>
-                  {d.description} {d.icd10_code && `(${d.icd10_code})`}
-                </li>
-              ))}
-            </ul>
-
-            <h3>Procedures</h3>
-            <ul>
-              {result.extraction.procedures.map((p, i) => (
-                <li key={i}>
-                  {p.description} {p.cpt_code && `(CPT ${p.cpt_code})`}
-                </li>
-              ))}
-            </ul>
-
-            <h3>Medications</h3>
-            <ul>
-              {result.extraction.medications.map((m, i) => (
-                <li key={i}>
-                  {m.name} {m.dosage && `— ${m.dosage}`}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="card">
-            <h2>Matched Rules ({result.matched_rules.length})</h2>
-            {result.matched_rules.length === 0 ? (
-              <p>No payer rules matched.</p>
-            ) : (
-              <ul>
-                {result.matched_rules.map((rule) => (
-                  <li key={rule.id}>
-                    <strong>[{rule.id}]</strong> {rule.description}
-                    <span className="badge">
-                      {rule.requires_prior_auth ? "Prior auth required" : "No prior auth"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+          <div className="min-h-[200px]">
+            {error && (
+              <div
+                role="alert"
+                className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800"
+              >
+                <svg className="mt-0.5 h-5 w-5 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <p className="font-semibold">Something went wrong</p>
+                  <p className="mt-1 text-red-700">{error}</p>
+                </div>
+              </div>
             )}
-          </section>
 
-          <section className="card">
-            <h2>Prior Auth Request</h2>
-            {result.prior_auth_request ? (
-              <>
-                <p><strong>Payer:</strong> {result.prior_auth_request.payer}</p>
-                <p>
-                  <strong>Procedure:</strong>{" "}
-                  {result.prior_auth_request.procedure_description} (CPT{" "}
-                  {result.prior_auth_request.cpt_code})
+            {loading && <LoadingState />}
+
+            {!loading && result && <ResultsView result={result} />}
+
+            {!loading && !result && !error && (
+              <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/50 px-8 py-16 text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                  <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                </div>
+                <h3 className="text-base font-semibold text-slate-700">Results will appear here</h3>
+                <p className="mt-2 max-w-xs text-sm text-slate-500">
+                  Paste a clinical note or upload a PDF, then run the pipeline to see extraction, rules, and your draft request.
                 </p>
-                <p>
-                  <strong>Diagnosis:</strong>{" "}
-                  {result.prior_auth_request.diagnosis_description} (ICD-10{" "}
-                  {result.prior_auth_request.icd10_code})
-                </p>
-                <h3>Clinical Justification</h3>
-                <p>{result.prior_auth_request.clinical_justification}</p>
-                <h3>Supporting Facts</h3>
-                <ul>
-                  {result.prior_auth_request.supporting_facts.map((fact, i) => (
-                    <li key={i}>{fact}</li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p>No prior auth request generated — no rules matched.</p>
+              </div>
             )}
-          </section>
-          {result.evaluation && (
-            <section className="card">
-              <h2>
-                Evaluation —{" "}
-                <span className={result.evaluation.confidence_score >= 0.8 ? "score-good" : "score-warn"}>
-                  {(result.evaluation.confidence_score * 100).toFixed(0)}% confidence
-                </span>
-              </h2>
-              <p>{result.evaluation.summary}</p>
-
-              <p>
-                <strong>Extraction grounded:</strong>{" "}
-                {result.evaluation.extraction_grounded ? "Yes" : "No"}
-              </p>
-              <p>
-                <strong>Prior auth consistent:</strong>{" "}
-                {result.evaluation.prior_auth_consistent ? "Yes" : "No"}
-              </p>
-
-              {result.evaluation.fact_evals.length > 0 && (
-                <>
-                  <h3>Supporting Facts Check</h3>
-                  <ul>
-                    {result.evaluation.fact_evals.map((f, i) => (
-                      <li key={i} className={f.grounded ? "grounded" : "ungrounded"}>
-                        {f.grounded ? "✓" : "✗"} {f.fact}
-                        <span className="reason"> — {f.reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <p><strong>Generation attempts:</strong> {result.generation_attempts}</p>
-              <p><strong>Code confidence:</strong> {(result.evaluation.code_confidence_score * 100).toFixed(0)}%</p>
-
-              {result.evaluation.llm_eval && (
-                <>
-                  <p>
-                    <strong>LLM groundedness:</strong>{" "}
-                    {(result.evaluation.llm_eval.groundedness_score * 100).toFixed(0)}%
-                  </p>
-                  <p><em>{result.evaluation.llm_eval.reasoning}</em></p>
-                  {result.evaluation.llm_eval.ungrounded_claims.length > 0 && (
-                    <>
-                      <h3>LLM Flagged Claims</h3>
-                      <ul>
-                        {result.evaluation.llm_eval.ungrounded_claims.map((claim, i) => (
-                          <li key={i} className="ungrounded">{claim}</li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </>
-              )}
-            </section>
-          )}
+          </div>
         </div>
-      )}
+      </main>
+
+      <footer className="border-t border-slate-200/80 bg-white/60 py-6 text-center text-xs text-slate-500">
+        Prior Auth Agent · For clinical workflow assistance · Review all outputs before submission
+      </footer>
     </div>
-  );
+  )
 }
 
-export default App;
+export default App
