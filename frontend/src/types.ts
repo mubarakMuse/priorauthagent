@@ -123,3 +123,14 @@ export interface PipelineResponse {
 }
 
 export type InputMode = "note" | "pdf"
+
+export type JobStatus = "queued" | "running" | "completed" | "failed"
+
+export interface JobStatusResponse {
+  job_id: string
+  status: JobStatus
+  error: string | null
+  result: PipelineResponse | null
+  created_at: string
+  updated_at: string
+}

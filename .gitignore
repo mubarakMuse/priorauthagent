@@ -32,3 +32,4 @@ infra/terraform/terraform.tfvars
 infra/terraform/*.tfvars
 !infra/terraform/terraform.tfvars.example
 infra/terraform/backend.tf
+.coverage

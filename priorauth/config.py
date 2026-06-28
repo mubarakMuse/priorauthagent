@@ -14,6 +14,12 @@ class Settings:
     max_generation_retries: int
     confidence_threshold: float
     rules_path: Path
+    job_store_backend: str
+    job_queue_backend: str
+    job_table_name: str
+    job_queue_url: str
+    aws_region: str
+    enable_sync_pipeline: bool
 
 
 def get_settings() -> Settings:
@@ -29,4 +35,10 @@ def get_settings() -> Settings:
         max_generation_retries=int(os.getenv("MAX_GENERATION_RETRIES", "2")),
         confidence_threshold=float(os.getenv("CONFIDENCE_THRESHOLD", "0.8")),
         rules_path=rules_path,
+        job_store_backend=os.getenv("JOB_STORE_BACKEND", "memory"),
+        job_queue_backend=os.getenv("JOB_QUEUE_BACKEND", "memory"),
+        job_table_name=os.getenv("JOB_TABLE_NAME", ""),
+        job_queue_url=os.getenv("JOB_QUEUE_URL", ""),
+        aws_region=os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1")),
+        enable_sync_pipeline=os.getenv("ENABLE_SYNC_PIPELINE", "false").lower() == "true",
     )

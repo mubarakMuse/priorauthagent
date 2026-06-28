@@ -5,6 +5,7 @@ REGION="${1:?Usage: deploy-api.sh <aws-region> <ecr-repo-url> <cluster-name> <se
 ECR_REPO="${2:?Missing ECR repo URL}"
 CLUSTER="${3:?Missing ECS cluster name}"
 SERVICE="${4:?Missing ECS service name}"
+WORKER_SERVICE="${5:-${CLUSTER%-cluster}-worker}"
 
 IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,7 +25,7 @@ if [[ "${IMAGE_TAG}" != "latest" ]]; then
   docker push "${ECR_REPO}:latest"
 fi
 
-echo "==> Forcing ECS deployment"
+echo "==> Forcing ECS API deployment"
 aws ecs update-service \
   --region "${REGION}" \
   --cluster "${CLUSTER}" \
@@ -32,5 +33,23 @@ aws ecs update-service \
   --force-new-deployment \
   --query "service.serviceName" \
   --output text
+
+echo "==> Forcing ECS worker deployment (${WORKER_SERVICE})"
+if aws ecs describe-services \
+  --region "${REGION}" \
+  --cluster "${CLUSTER}" \
+  --services "${WORKER_SERVICE}" \
+  --query "services[0].status" \
+  --output text 2>/dev/null | grep -q ACTIVE; then
+  aws ecs update-service \
+    --region "${REGION}" \
+    --cluster "${CLUSTER}" \
+    --service "${WORKER_SERVICE}" \
+    --force-new-deployment \
+    --query "service.serviceName" \
+    --output text
+else
+  echo "    Worker service not found — skip (run terraform apply for jobs infra first)"
+fi
 
 echo "==> Done. Image: ${ECR_REPO}:${IMAGE_TAG}"

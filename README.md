@@ -134,6 +134,67 @@ terraform output deploy_frontend_command
 
 ---
 
+## Background jobs (async pipeline)
+
+Long-running LLM calls no longer block HTTP. The API returns immediately; a worker processes jobs in the background.
+
+```
+Browser ──POST /api/jobs──► API (returns job_id in ~100ms)
+              │
+              ▼
+         SQS queue ──► Worker ECS task ──► DynamoDB (status + result)
+              │
+Browser ──GET /api/jobs/{id}──► poll until completed
+```
+
+| Environment | Queue | Store | Worker |
+|-------------|-------|-------|--------|
+| **Local** | In-memory | In-memory | In-process thread (auto-starts with API) |
+| **AWS** | SQS | DynamoDB | ECS Fargate worker service |
+
+---
+
+## Testing
+
+### Backend (pytest)
+
+```bash
+pip install -r requirements-dev.txt
+pytest --cov=priorauth --cov-report=term-missing
+```
+
+27 tests covering rules matching, criteria validation, jobs, API routes, PDF export, and evaluation.
+
+### Frontend (vitest)
+
+```bash
+cd frontend && npm run test
+```
+
+---
+
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| **ci.yml** | Push / PR to `main` | Backend tests + coverage, frontend tests + build, Docker build |
+| **deploy.yml** | Push to `main` | Runs tests, then deploys API + worker + frontend to AWS |
+
+**Deploy secrets required** (GitHub → Settings → Secrets):
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+
+After adding SQS/DynamoDB/worker via Terraform, run:
+
+```bash
+cd infra/terraform && terraform apply
+```
+
+---
+
 ## API endpoints
 
 | Method | Path | Purpose |
@@ -141,9 +202,11 @@ terraform output deploy_frontend_command
 | GET | `/health` | Health check |
 | GET | `/api/policy` | Default payer policy |
 | POST | `/api/policy/preview` | Validate custom rules JSON |
-| POST | `/api/process` | Run pipeline on clinical note |
-| POST | `/api/process-pdf` | Run pipeline on uploaded PDF |
+| **POST** | **`/api/jobs`** | **Submit pipeline job (async)** |
+| **POST** | **`/api/jobs/pdf`** | **Submit PDF pipeline job (async)** |
+| **GET** | **`/api/jobs/{job_id}`** | **Poll job status / result** |
 | POST | `/api/export-pdf` | Generate PDF portfolio from results |
+| POST | `/api/process` | Sync pipeline (disabled in production) |
 
 ---
 
@@ -157,7 +220,7 @@ What you have now is a strong **demo**. To move toward real clinical use, priori
 |----------|-------------|-----|
 | 1 | **Authentication & RBAC** | SSO (Okta/Azure AD), role-based access — no open public URL with patient data |
 | 2 | **PHI-safe logging** | Never log clinical notes or API keys; redact in CloudWatch; BAA with vendors |
-| 3 | **Async job queue** | Pipeline takes 30–90s — use SQS + worker instead of blocking HTTP |
+| 3 | **Async job queue** | ✅ SQS + DynamoDB + ECS worker implemented |
 | 4 | **Database** | PostgreSQL for cases, audit trail, versioned rules — not stateless requests |
 | 5 | **Human approval gate** | Clinician must sign off before PDF is “submission ready” |
 
@@ -179,7 +242,7 @@ What you have now is a strong **demo**. To move toward real clinical use, priori
 |----------|-------------|-----|
 | 13 | **Custom domain + HTTPS on ALB** | Professional URL, stricter TLS |
 | 14 | **WAF on CloudFront** | Rate limiting, bot protection |
-| 15 | **CI/CD (GitHub Actions)** | Auto-test and deploy on merge — no manual scripts |
+| 15 | **CI/CD (GitHub Actions)** | ✅ Tests on PR; auto-deploy on push to main |
 | 16 | **Monitoring & alerts** | Datadog/CloudWatch alarms on errors, latency, ECS health |
 | 17 | **Multi-environment** | Separate dev / staging / prod with isolated secrets |
 | 18 | **Cost controls** | Right-size ECS tasks, consider NAT gateway alternatives |
@@ -203,7 +266,12 @@ What you have now is a strong **demo**. To move toward real clinical use, priori
 | `CONFIDENCE_THRESHOLD` | `0.8` | Retry generation if below this |
 | `MAX_GENERATION_RETRIES` | `2` | Max retry attempts |
 | `RULES_PATH` | `priorauth/data/rules.json` | Server-side default rules file |
-| `ALLOWED_ORIGINS` | localhost | CORS origins (CloudFront URL set in Terraform) |
+| `JOB_STORE_BACKEND` | `memory` | `memory` or `dynamodb` |
+| `JOB_QUEUE_BACKEND` | `memory` | `memory` or `sqs` |
+| `JOB_TABLE_NAME` | — | DynamoDB table (AWS) |
+| `JOB_QUEUE_URL` | — | SQS queue URL (AWS) |
+| `AWS_REGION` | `us-east-1` | AWS region for SQS/DynamoDB |
+| `ENABLE_SYNC_PIPELINE` | `false` | Enable blocking `/api/process` (dev only) |
 
 ---
 

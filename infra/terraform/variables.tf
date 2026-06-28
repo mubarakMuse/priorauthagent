@@ -94,6 +94,24 @@ variable "acm_certificate_arn" {
   default     = ""
 }
 
+variable "worker_desired_count" {
+  description = "Number of background worker tasks to run."
+  type        = number
+  default     = 1
+}
+
+variable "worker_cpu" {
+  description = "Fargate CPU units for the worker task."
+  type        = number
+  default     = 512
+}
+
+variable "worker_memory" {
+  description = "Fargate memory (MiB) for the worker task."
+  type        = number
+  default     = 1024
+}
+
 variable "allowed_origins" {
   description = "Comma-separated CORS origins for the API (CloudFront URL added automatically)."
   type        = string

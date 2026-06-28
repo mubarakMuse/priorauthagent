@@ -1,7 +1,10 @@
-import type { PipelineResponse } from "../types"
+import type { JobStatus, JobStatusResponse, PipelineResponse } from "../types"
 import type { PolicyOverview } from "../types/policy"
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ""
+
+const POLL_INTERVAL_MS = 2000
+const MAX_POLL_MS = 180_000
 
 const parseErrorDetail = async (
   response: Response,
@@ -36,11 +39,13 @@ const parseErrorDetail = async (
   return text.slice(0, 200) || `${fallback} (HTTP ${response.status})`
 }
 
-export const processClinicalNote = async (
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export const submitClinicalNoteJob = async (
   clinicalNote: string,
   rules?: unknown
-): Promise<PipelineResponse> => {
-  const response = await fetch(`${API_BASE}/api/process`, {
+): Promise<string> => {
+  const response = await fetch(`${API_BASE}/api/jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -50,23 +55,21 @@ export const processClinicalNote = async (
   })
 
   if (!response.ok) {
-    throw new Error(await parseErrorDetail(response, "Request failed"))
+    throw new Error(await parseErrorDetail(response, "Failed to submit job"))
   }
 
-  return response.json()
+  const data = await response.json()
+  return data.job_id as string
 }
 
-export const processPdf = async (
-  file: File,
-  rules?: unknown
-): Promise<PipelineResponse> => {
+export const submitPdfJob = async (file: File, rules?: unknown): Promise<string> => {
   const formData = new FormData()
   formData.append("file", file)
   if (rules !== undefined) {
     formData.append("rules_json", JSON.stringify(rules))
   }
 
-  const response = await fetch(`${API_BASE}/api/process-pdf`, {
+  const response = await fetch(`${API_BASE}/api/jobs/pdf`, {
     method: "POST",
     body: formData,
   })
@@ -75,7 +78,60 @@ export const processPdf = async (
     throw new Error(await parseErrorDetail(response, "PDF upload failed"))
   }
 
+  const data = await response.json()
+  return data.job_id as string
+}
+
+export const getJobStatus = async (jobId: string): Promise<JobStatusResponse> => {
+  const response = await fetch(`${API_BASE}/api/jobs/${jobId}`)
+
+  if (!response.ok) {
+    throw new Error(await parseErrorDetail(response, "Failed to get job status"))
+  }
+
   return response.json()
+}
+
+export const waitForJob = async (
+  jobId: string,
+  onStatusChange?: (status: JobStatus) => void
+): Promise<PipelineResponse> => {
+  const started = Date.now()
+
+  while Date.now() - started < MAX_POLL_MS) {
+    const status = await getJobStatus(jobId)
+    onStatusChange?.(status.status)
+
+    if (status.status === "completed" && status.result) {
+      return status.result
+    }
+
+    if (status.status === "failed") {
+      throw new Error(status.error ?? "Pipeline job failed")
+    }
+
+    await sleep(POLL_INTERVAL_MS)
+  }
+
+  throw new Error("Pipeline timed out while waiting for results. Please try again.")
+}
+
+export const processClinicalNote = async (
+  clinicalNote: string,
+  rules?: unknown,
+  onStatusChange?: (status: JobStatus) => void
+): Promise<PipelineResponse> => {
+  const jobId = await submitClinicalNoteJob(clinicalNote, rules)
+  return waitForJob(jobId, onStatusChange)
+}
+
+export const processPdf = async (
+  file: File,
+  rules?: unknown,
+  onStatusChange?: (status: JobStatus) => void
+): Promise<PipelineResponse> => {
+  const jobId = await submitPdfJob(file, rules)
+  return waitForJob(jobId, onStatusChange)
 }
 
 export const fetchPolicy = async (): Promise<PolicyOverview> => {

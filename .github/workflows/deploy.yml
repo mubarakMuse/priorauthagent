@@ -1,0 +1,121 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test-backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: |
+          pip install -r requirements-dev.txt
+          pytest --cov=priorauth --cov-report=term-missing
+        env:
+          ANTHROPIC_API_KEY: test-key
+          JOB_STORE_BACKEND: memory
+          JOB_QUEUE_BACKEND: memory
+
+  test-frontend:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: |
+          npm ci
+          npm run test
+          npm run build
+
+  deploy:
+    name: Deploy to AWS
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          ECR_REPOSITORY: priorauth-prod-api
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --platform linux/amd64 \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
+            .
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+      - name: Deploy API and worker to ECS
+        run: |
+          aws ecs update-service \
+            --cluster priorauth-prod-cluster \
+            --service priorauth-prod-api \
+            --force-new-deployment
+          aws ecs update-service \
+            --cluster priorauth-prod-cluster \
+            --service priorauth-prod-worker \
+            --force-new-deployment || echo "Worker service not yet provisioned — run terraform apply"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Deploy frontend
+        env:
+          FRONTEND_BUCKET: priorauth-prod-frontend-970547371283
+          CLOUDFRONT_ID: E11HSVDS5SX6SR
+        run: |
+          cd frontend
+          npm ci
+          VITE_API_BASE="" npm run build
+          aws s3 sync dist/ "s3://${FRONTEND_BUCKET}/" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "index.html" \
+            --exclude "*.html"
+          aws s3 sync dist/ "s3://${FRONTEND_BUCKET}/" \
+            --cache-control "public,max-age=0,must-revalidate" \
+            --exclude "*" \
+            --include "*.html"
+          aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_ID}" \
+            --paths "/*"

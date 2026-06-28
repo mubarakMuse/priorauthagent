@@ -17,6 +17,15 @@ locals {
     ["https://${aws_cloudfront_distribution.main.domain_name}"],
     var.domain_name != "" ? ["https://${var.domain_name}"] : []
   ))
+
+  job_environment = [
+    { name = "JOB_STORE_BACKEND", value = "dynamodb" },
+    { name = "JOB_QUEUE_BACKEND", value = "sqs" },
+    { name = "JOB_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
+    { name = "JOB_QUEUE_URL", value = aws_sqs_queue.pipeline.url },
+    { name = "AWS_REGION", value = var.aws_region },
+    { name = "ENABLE_SYNC_PIPELINE", value = "false" },
+  ]
 }
 
 resource "aws_ecs_task_definition" "api" {
@@ -39,12 +48,15 @@ resource "aws_ecs_task_definition" "api" {
       protocol      = "tcp"
     }]
 
-    environment = [
-      {
-        name  = "ALLOWED_ORIGINS"
-        value = join(",", local.cors_origins)
-      }
-    ]
+    environment = concat(
+      [
+        {
+          name  = "ALLOWED_ORIGINS"
+          value = join(",", local.cors_origins)
+        }
+      ],
+      local.job_environment
+    )
 
     secrets = [{
       name      = "ANTHROPIC_API_KEY"
@@ -68,6 +80,57 @@ resource "aws_ecs_task_definition" "api" {
       startPeriod = 60
     }
   }])
+
+  tags = local.common_tags
+}
+
+resource "aws_ecs_task_definition" "worker" {
+  family                   = "${local.name_prefix}-worker"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.worker_cpu
+  memory                   = var.worker_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name      = "worker"
+    image     = local.api_image
+    essential = true
+    command   = ["python", "-m", "priorauth.worker"]
+
+    environment = local.job_environment
+
+    secrets = [{
+      name      = "ANTHROPIC_API_KEY"
+      valueFrom = aws_secretsmanager_secret.anthropic_api_key.arn
+    }]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.worker.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "worker"
+      }
+    }
+  }])
+
+  tags = local.common_tags
+}
+
+resource "aws_ecs_service" "worker" {
+  name            = "${local.name_prefix}-worker"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.worker.arn
+  desired_count   = var.worker_desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = var.enable_nat_gateway ? module.vpc.private_subnets : module.vpc.public_subnets
+    security_groups  = [aws_security_group.ecs_tasks.id]
+    assign_public_ip = !var.enable_nat_gateway
+  }
 
   tags = local.common_tags
 }

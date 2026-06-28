@@ -6,3 +6,6 @@ services:
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:3000
+      JOB_STORE_BACKEND: memory
+      JOB_QUEUE_BACKEND: memory
+      ENABLE_SYNC_PIPELINE: "false"
