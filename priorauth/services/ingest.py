@@ -14,6 +14,8 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
             pages.append(text.strip())
 
     if not pages:
-        raise ValueError("Could not extract text from PDF — file may be scanned/image-only")
+        raise ValueError(
+            "Could not extract text from PDF — file may be scanned/image-only"
+        )
 
     return "\n\n".join(pages)

@@ -1,0 +1,3 @@
+from priorauth.api.routes import router
+
+__all__ = ["router"]

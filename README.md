@@ -25,18 +25,35 @@ Clinical note (paste / PDF)
 
 ## Project layout
 
-| File | Purpose |
-|------|---------|
-| `app.py` | FastAPI app — `/api/process` (text) and `/api/process-pdf` (upload) |
-| `pipeline.py` | Orchestrates the stages and the retry loop |
-| `script.py` | Clinical-data extraction (LLM call) + CLI entry point |
-| `rules.py` / `rules.json` | Payer rule loading and matching |
-| `generate.py` | Drafts the prior-auth request (LLM call) |
-| `eval.py` | Deterministic grounding checks |
-| `llm_eval.py` | LLM-as-judge groundedness scoring |
-| `models.py` | Pydantic models (the typed contracts) |
-| `ingest.py` | PDF → text (pypdf) |
-| `frontend/` | React + TypeScript UI |
+```
+priorAuth/
+├── priorauth/                  # Python backend package
+│   ├── main.py                 # FastAPI app entry point
+│   ├── config.py               # Environment settings
+│   ├── api/routes.py           # HTTP routes (/health, /api/process, /api/process-pdf)
+│   ├── pipeline/runner.py      # Orchestrates extract → match → generate → evaluate
+│   ├── services/               # Business logic (one concern per file)
+│   │   ├── extraction.py       # LLM clinical data extraction
+│   │   ├── generation.py       # LLM prior-auth drafting
+│   │   ├── evaluation.py       # Deterministic grounding checks
+│   │   ├── llm_judge.py        # LLM-as-judge scoring
+│   │   ├── rules.py            # Payer rule loading and matching
+│   │   └── ingest.py           # PDF → text
+│   ├── models/                 # Pydantic schemas (API contracts)
+│   ├── llm/                    # Shared LLM client and prompts
+│   └── data/rules.json         # Payer prior-auth rules
+├── cli.py                      # Local CLI (no HTTP server)
+├── frontend/                   # React + TypeScript UI
+└── infra/                      # AWS Terraform + deploy scripts
+```
+
+| Layer | Responsibility |
+|-------|----------------|
+| **API** | HTTP validation, routing, error responses |
+| **Pipeline** | Stage orchestration and retry loop |
+| **Services** | Single-purpose business logic |
+| **Models** | Typed request/response contracts |
+| **LLM** | Anthropic client and prompt templates |
 
 ## Running it
 
@@ -47,7 +64,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY="your-key-here"
-uvicorn app:app --reload
+uvicorn priorauth.main:app --reload
+# or: uvicorn app:app --reload  (compat shim)
 ```
 
 Backend runs on `http://localhost:8000` (interactive docs at `/docs`).
