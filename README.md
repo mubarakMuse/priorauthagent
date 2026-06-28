@@ -1,63 +1,88 @@
-# priorauthagent
+# Prior Auth Agent
 
-An agentic prior-authorization assistant. It ingests a clinical note (pasted text or PDF), uses an LLM to extract structured clinical data, matches it against payer prior-auth rules with deterministic code, drafts a prior-authorization request, and evaluates the output for groundedness — retrying generation when confidence is low.
+An AI assistant that helps clinical teams prepare **prior authorization (prior auth)** requests from clinical notes.
 
-## Architecture
+**Live demo:** https://d7m3su8sqzqgt.cloudfront.net
+
+Paste a clinical note (or upload a PDF), configure payer rules, run the pipeline, review the results, and **export a PDF** to send to a payer or for internal review.
+
+---
+
+## What it does (in plain English)
+
+1. **Reads the note** — Extracts diagnoses, procedures, medications, and clinical evidence (therapy weeks, imaging, exam findings).
+2. **Finds the right payer rule** — Matches CPT codes and ICD-10 codes against your policy.
+3. **Checks policy criteria** — Validates things like conservative therapy duration, imaging, and diagnosis against the note.
+4. **Drafts a prior auth request** — Generates clinical justification and supporting facts.
+5. **Scores quality** — Checks that the draft is grounded in the source note (not invented).
+6. **Exports a PDF** — Downloads a portfolio you can review or attach for submission.
+
+This is a **demo / prototype**, not a certified medical device. Always have a clinician review outputs before sending anything to a payer.
+
+---
+
+## How the pipeline works
 
 ```
 Clinical note (paste / PDF)
         │
         ▼
-   Ingest  ──►  Extract (LLM)  ──►  Match rules (code)  ──►  Generate (LLM)
-                                                                   │
-                                                                   ▼
-                                              Evaluate (code checks + LLM judge)
-                                                                   │
-                                            confidence < 0.8 ? ──► retry with feedback
-                                                                   │ (max 3 attempts)
-                                                                   ▼
-                                                        Full result → React UI
+   Extract (LLM) ──► Match rules (CPT + ICD-10)
+        │                    │
+        │                    ▼
+        │           Validate criteria (therapy, imaging, exam…)
+        │                    │
+        └──────────► Generate PA draft (LLM + policy context)
+                           │
+                           ▼
+                    Evaluate (groundedness + retry if low confidence)
+                           │
+                           ▼
+                    Results + Export PDF
 ```
 
-- **LLM where language matters:** extraction and request generation.
-- **Deterministic code where policy matters:** payer rule matching and code/fact grounding checks.
-- **Eval + retry loop:** an LLM-as-judge plus deterministic checks produce a blended confidence score; low scores feed feedback back into generation.
+| Step | Who decides | What happens |
+|------|-------------|--------------|
+| Extract | LLM | Pull structured data from free text |
+| Match rules | Code | CPT + allowed ICD-10 from policy |
+| Validate criteria | Code | Check each policy requirement against extracted evidence |
+| Retrieve policy (RAG-lite) | Code | Pull relevant policy chunks for generation |
+| Generate | LLM | Draft prior auth letter from extraction + rules |
+| Evaluate | Code + LLM judge | Score confidence; retry up to 2 times if below 80% |
 
-## Project layout
+---
+
+## Demo features
+
+- **Configurable rules** — Paste your own payer policy JSON or load the built-in Meridian Health Plan sample.
+- **Sample cases** — One-click notes for spine injection, MRI, PT, surgery, and no-match scenarios.
+- **Criteria validation** — See which policy requirements are met, missing, or need external data (claims history).
+- **Pop-up explainers** — “How it works” and “Policy & config” modals keep the main demo clean.
+- **PDF export** — Download a payer-ready portfolio from the results screen.
+
+---
+
+## Project structure
 
 ```
 priorAuth/
-├── priorauth/                  # Python backend package
-│   ├── main.py                 # FastAPI app entry point
-│   ├── config.py               # Environment settings
-│   ├── api/routes.py           # HTTP routes (/health, /api/process, /api/process-pdf)
-│   ├── pipeline/runner.py      # Orchestrates extract → match → generate → evaluate
-│   ├── services/               # Business logic (one concern per file)
-│   │   ├── extraction.py       # LLM clinical data extraction
-│   │   ├── generation.py       # LLM prior-auth drafting
-│   │   ├── evaluation.py       # Deterministic grounding checks
-│   │   ├── llm_judge.py        # LLM-as-judge scoring
-│   │   ├── rules.py            # Payer rule loading and matching
-│   │   └── ingest.py           # PDF → text
-│   ├── models/                 # Pydantic schemas (API contracts)
-│   ├── llm/                    # Shared LLM client and prompts
-│   └── data/rules.json         # Payer prior-auth rules
-├── cli.py                      # Local CLI (no HTTP server)
-├── frontend/                   # React + TypeScript UI
-└── infra/                      # AWS Terraform + deploy scripts
+├── priorauth/              # Python backend (FastAPI)
+│   ├── api/routes.py       # HTTP endpoints
+│   ├── pipeline/runner.py  # Orchestrates the full flow
+│   ├── services/           # Extraction, rules, criteria, generation, PDF export…
+│   ├── models/             # Pydantic schemas
+│   ├── llm/prompts.py      # LLM prompt templates
+│   └── data/rules.json     # Default payer rules (Meridian Health Plan)
+├── frontend/               # React + TypeScript + Tailwind
+├── infra/terraform/        # AWS infrastructure (ECS, ALB, CloudFront, S3…)
+└── scripts/                # deploy-api.sh, deploy-frontend.sh
 ```
 
-| Layer | Responsibility |
-|-------|----------------|
-| **API** | HTTP validation, routing, error responses |
-| **Pipeline** | Stage orchestration and retry loop |
-| **Services** | Single-purpose business logic |
-| **Models** | Typed request/response contracts |
-| **LLM** | Anthropic client and prompt templates |
+---
 
-## Running it
+## Run locally
 
-### Backend
+### 1. Backend
 
 ```bash
 python3 -m venv .venv
@@ -65,12 +90,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY="your-key-here"
 uvicorn priorauth.main:app --reload
-# or: uvicorn app:app --reload  (compat shim)
 ```
 
-Backend runs on `http://localhost:8000` (interactive docs at `/docs`).
+API: http://localhost:8000 · Docs: http://localhost:8000/docs
 
-### Frontend
+### 2. Frontend
 
 ```bash
 cd frontend
@@ -78,28 +102,120 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`). The dev server proxies `/api` to the backend.
+Open the URL Vite prints (usually http://localhost:5173). The dev server proxies `/api` to the backend.
 
-## AWS deployment (Terraform)
+---
 
-See [infra/README.md](infra/README.md) for production infrastructure as code:
+## Deploy to AWS
 
-- **ECS Fargate** — FastAPI API container
-- **ALB** — long-running LLM requests (120s timeout)
-- **S3 + CloudFront** — React frontend, `/api/*` routed to the ALB
-- **Secrets Manager** — `ANTHROPIC_API_KEY`
-- **VPC** — private subnets + NAT for ECS tasks
+Infrastructure is managed with Terraform. See [infra/README.md](infra/README.md) for full details.
+
+**Quick deploy (after `terraform apply`):**
+
+```bash
+# API (builds linux/amd64 image, pushes to ECR, redeploys ECS)
+./scripts/deploy-api.sh us-east-1 \
+  <account>.dkr.ecr.us-east-1.amazonaws.com/priorauth-prod-api \
+  priorauth-prod-cluster priorauth-prod-api
+
+# Frontend (builds React app, syncs to S3, invalidates CloudFront)
+./scripts/deploy-frontend.sh priorauth-prod-frontend-<account-id> <cloudfront-distribution-id>
+```
+
+Get the exact commands from Terraform output:
 
 ```bash
 cd infra/terraform
-cp terraform.tfvars.example terraform.tfvars   # set anthropic_api_key
-terraform init && terraform apply
-# then deploy API + frontend — see infra/README.md
+terraform output deploy_api_command
+terraform output deploy_frontend_command
 ```
 
-## Production next steps
+**Required secret:** Set `anthropic_api_key` in `terraform.tfvars` (gitignored). Never commit API keys.
 
-- Run the pipeline in a background worker (async jobs) instead of blocking HTTP.
-- Persist cases, versioned payer rules, and an audit trail in PostgreSQL.
-- Pull clinical data from the EHR via FHIR instead of paste/PDF.
-- Add SSO/RBAC, PHI-safe logging, and a human approval step before submission.
+---
+
+## API endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Health check |
+| GET | `/api/policy` | Default payer policy |
+| POST | `/api/policy/preview` | Validate custom rules JSON |
+| POST | `/api/process` | Run pipeline on clinical note |
+| POST | `/api/process-pdf` | Run pipeline on uploaded PDF |
+| POST | `/api/export-pdf` | Generate PDF portfolio from results |
+
+---
+
+## Production improvements (roadmap)
+
+What you have now is a strong **demo**. To move toward real clinical use, prioritize these in order:
+
+### Must-have before real PHI
+
+| Priority | Improvement | Why |
+|----------|-------------|-----|
+| 1 | **Authentication & RBAC** | SSO (Okta/Azure AD), role-based access — no open public URL with patient data |
+| 2 | **PHI-safe logging** | Never log clinical notes or API keys; redact in CloudWatch; BAA with vendors |
+| 3 | **Async job queue** | Pipeline takes 30–90s — use SQS + worker instead of blocking HTTP |
+| 4 | **Database** | PostgreSQL for cases, audit trail, versioned rules — not stateless requests |
+| 5 | **Human approval gate** | Clinician must sign off before PDF is “submission ready” |
+
+### Core product (real prior auth workflow)
+
+| Priority | Improvement | Why |
+|----------|-------------|-----|
+| 6 | **EHR integration (FHIR)** | Pull notes, diagnoses, imaging from Epic/Cerner — not paste-only |
+| 7 | **Eligibility check** | Verify member/plan via payer 270/271 before matching rules |
+| 8 | **Claims / history lookup** | Injection frequency, PT visit counts need claims data, not notes alone |
+| 9 | **Live payer policies** | Replace static `rules.json` with payer API or curated policy database |
+| 10 | **Vector RAG** | Embed payer policy PDFs; retrieve relevant sections per case (replace keyword demo) |
+| 11 | **Payer submission** | X12 278, Availity/Change Healthcare portal, or fax integration |
+| 12 | **Denial & appeals** | Track auth status, store denial reasons, support rework |
+
+### Infrastructure & ops
+
+| Priority | Improvement | Why |
+|----------|-------------|-----|
+| 13 | **Custom domain + HTTPS on ALB** | Professional URL, stricter TLS |
+| 14 | **WAF on CloudFront** | Rate limiting, bot protection |
+| 15 | **CI/CD (GitHub Actions)** | Auto-test and deploy on merge — no manual scripts |
+| 16 | **Monitoring & alerts** | Datadog/CloudWatch alarms on errors, latency, ECS health |
+| 17 | **Multi-environment** | Separate dev / staging / prod with isolated secrets |
+| 18 | **Cost controls** | Right-size ECS tasks, consider NAT gateway alternatives |
+
+### AI quality
+
+| Priority | Improvement | Why |
+|----------|-------------|-----|
+| 19 | **Structured criteria via LLM** | Hybrid: code for codes, LLM for narrative criteria with citations |
+| 20 | **Evaluation dataset** | Golden test cases with expected rule matches and criteria outcomes |
+| 21 | **Prompt versioning** | Track which prompt version produced each draft (audit) |
+
+---
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | — | Required. Anthropic API key |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | LLM model |
+| `CONFIDENCE_THRESHOLD` | `0.8` | Retry generation if below this |
+| `MAX_GENERATION_RETRIES` | `2` | Max retry attempts |
+| `RULES_PATH` | `priorauth/data/rules.json` | Server-side default rules file |
+| `ALLOWED_ORIGINS` | localhost | CORS origins (CloudFront URL set in Terraform) |
+
+---
+
+## Tech stack
+
+- **Backend:** Python 3.12, FastAPI, Pydantic, Anthropic Claude, ReportLab (PDF)
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4
+- **AWS:** ECS Fargate, ALB, ECR, S3, CloudFront, Secrets Manager, VPC + NAT
+- **IaC:** Terraform
+
+---
+
+## License
+
+Demo / internal use. Review compliance requirements before handling real patient data.

@@ -1,11 +1,14 @@
 from pydantic import BaseModel, Field
 
 from priorauth.models.clinical import ClinicalExtraction
+from priorauth.models.criteria import CriteriaValidationResult
+from priorauth.models.policy import PolicyOverview
 from priorauth.models.rules import PayerRule
 
 
 class PipelineRequest(BaseModel):
     clinical_note: str
+    rules: dict | list | None = None
 
 
 class PriorAuthRequest(BaseModel):
@@ -49,3 +52,6 @@ class PipelineResponse(BaseModel):
     prior_auth_request: PriorAuthRequest | None = None
     evaluation: PipelineEval | None = None
     generation_attempts: int = 1
+    policy: PolicyOverview | None = None
+    criteria_validation: CriteriaValidationResult | None = None
+    retrieved_policy_chunks: list[dict] = Field(default_factory=list)

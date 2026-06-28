@@ -14,13 +14,26 @@ Return ONLY valid JSON matching this schema:
   "medications": [
     {"name": "string", "dosage": "string or null"}
   ],
-  "patient_summary": "string"
+  "patient_summary": "string",
+  "clinical_evidence": {
+    "conservative_therapy_weeks": "integer or null",
+    "conservative_therapy_types": ["PT", "NSAIDs", etc.],
+    "imaging_studies": [
+      {"modality": "MRI|CT|X-ray", "body_part": "string or null", "finding": "string or null"}
+    ],
+    "clinical_findings": ["objective exam findings, e.g. positive straight leg raise"],
+    "red_flag_symptoms": ["cauda equina, progressive deficit, etc. — empty if none"],
+    "prior_treatments_failed": ["prior ESI", "conservative therapy", etc.],
+    "pt_visit_count": "integer or null",
+    "prior_injection_count": "integer or null"
+  }
 }
 
 Rules:
 - Only extract information explicitly stated in the note
-- Use null for codes you cannot infer from the text
+- Use null for codes or counts you cannot infer from the text
 - Do not invent diagnoses, procedures, or codes
+- clinical_evidence fields support payer criteria validation — extract what is documented
 - patient_summary: 1-2 factual sentences only
 - Return raw JSON only. No markdown, no explanation.
 """

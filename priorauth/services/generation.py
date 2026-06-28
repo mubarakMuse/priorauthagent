@@ -4,6 +4,7 @@ from priorauth.config import get_settings
 from priorauth.llm.client import get_client, parse_json_response
 from priorauth.llm.prompts import GENERATION_SYSTEM_PROMPT
 from priorauth.models.clinical import ClinicalExtraction
+from priorauth.models.criteria import CriteriaValidationResult
 from priorauth.models.pipeline import PriorAuthRequest
 from priorauth.models.rules import PayerRule
 
@@ -11,6 +12,8 @@ from priorauth.models.rules import PayerRule
 def generate_prior_auth_request(
     extraction: ClinicalExtraction,
     matched_rules: list[PayerRule],
+    policy_chunks: list[dict] | None = None,
+    criteria_validation: CriteriaValidationResult | None = None,
     feedback: str | None = None,
 ) -> PriorAuthRequest:
     """Draft a prior-auth request from extraction and matched payer rules."""
@@ -29,13 +32,27 @@ IMPORTANT — previous attempt failed quality check:
 Fix these issues. Use ONLY information from the extraction and source note.
 """
 
+    rag_block = ""
+    if policy_chunks:
+        rag_block = f"""
+Retrieved payer policy context (RAG — relevant policy chunks for this case):
+{json.dumps(policy_chunks, indent=2)}
+"""
+
+    criteria_block = ""
+    if criteria_validation and criteria_validation.rules:
+        criteria_block = f"""
+Criteria validation results — address documented gaps; do not claim unmet criteria as met:
+{json.dumps([r.model_dump() for r in criteria_validation.rules], indent=2)}
+"""
+
     user_content = f"""
 Extracted clinical data:
 {extraction.model_dump_json(indent=2)}
 
 Matched payer rules:
 {json.dumps([rule.model_dump() for rule in matched_rules], indent=2)}
-{feedback_block}
+{rag_block}{criteria_block}{feedback_block}
 Draft the prior authorization request.
 """
 

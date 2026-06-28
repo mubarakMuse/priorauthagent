@@ -64,6 +64,12 @@ variable "alb_idle_timeout" {
   default     = 120
 }
 
+variable "cloudfront_api_origin_read_timeout" {
+  description = "CloudFront origin read timeout for /api/* (seconds). LLM pipeline can exceed 30s."
+  type        = number
+  default     = 120
+}
+
 variable "anthropic_api_key" {
   description = "Anthropic API key stored in Secrets Manager."
   type        = string

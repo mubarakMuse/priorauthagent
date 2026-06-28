@@ -1,0 +1,127 @@
+{
+    "payer": "Meridian Health Plan",
+    "plan_type": "PPO",
+    "ruleset_version": "2026.1",
+    "last_updated": "2026-01-15",
+    "rules": [
+      {
+        "rule_id": "PA-SPINE-001",
+        "procedure_code": "62323",
+        "procedure_description": "Lumbar/sacral epidural steroid injection with imaging guidance",
+        "requires_prior_auth": true,
+        "category": "Pain Management - Spine",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "conservative_therapy",
+            "description": "Documented failure of at least 6 weeks of conservative therapy (physical therapy, NSAIDs, or oral analgesics)",
+            "required": true
+          },
+          {
+            "id": "C2",
+            "type": "imaging",
+            "description": "Imaging (MRI or CT) confirming a diagnosis consistent with the requested level (e.g., disc herniation, radiculopathy, spinal stenosis)",
+            "required": true
+          },
+          {
+            "id": "C3",
+            "type": "diagnosis",
+            "description": "Supporting diagnosis of radiculopathy or radicular pain",
+            "allowed_icd10": ["M51.16", "M51.17", "M54.16", "M54.17", "M54.30", "M54.31", "M54.32"],
+            "required": true
+          },
+          {
+            "id": "C4",
+            "type": "frequency_limit",
+            "description": "No more than 3 injections per region in a rolling 12-month period",
+            "required": false
+          }
+        ],
+        "auto_approve_if_all_met": true,
+        "typical_turnaround_days": 5
+      },
+      {
+        "rule_id": "PA-SPINE-002",
+        "procedure_code": "63030",
+        "procedure_description": "Lumbar microdiscectomy / laminotomy with decompression of nerve root, single interspace",
+        "requires_prior_auth": true,
+        "category": "Surgery - Spine",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "conservative_therapy",
+            "description": "Documented failure of at least 6 weeks of conservative therapy",
+            "required": true
+          },
+          {
+            "id": "C2",
+            "type": "imaging",
+            "description": "MRI confirming disc herniation with nerve root compression correlating to clinical symptoms",
+            "required": true
+          },
+          {
+            "id": "C3",
+            "type": "clinical_exam",
+            "description": "Objective neurological findings on exam (e.g., positive straight leg raise, motor/sensory deficit, reflex changes) correlating with imaging",
+            "required": true
+          },
+          {
+            "id": "C4",
+            "type": "diagnosis",
+            "description": "Supporting diagnosis of lumbar disc displacement with radiculopathy",
+            "allowed_icd10": ["M51.16", "M51.17", "M51.26", "M51.27"],
+            "required": true
+          },
+          {
+            "id": "C5",
+            "type": "failed_injection",
+            "description": "Failure of prior epidural steroid injection OR progressive neurological deficit",
+            "required": false
+          }
+        ],
+        "auto_approve_if_all_met": false,
+        "requires_medical_director_review": true,
+        "typical_turnaround_days": 14
+      },
+      {
+        "rule_id": "PA-IMAGING-001",
+        "procedure_code": "72148",
+        "procedure_description": "MRI lumbar spine without contrast",
+        "requires_prior_auth": true,
+        "category": "Advanced Imaging",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "conservative_therapy",
+            "description": "Minimum 4 weeks of conservative therapy unless red-flag symptoms present",
+            "required": true
+          },
+          {
+            "id": "C2",
+            "type": "red_flag_exception",
+            "description": "Prior auth waived if red-flag symptoms present (suspected cauda equina, progressive neuro deficit, suspected malignancy or infection, trauma)",
+            "required": false
+          }
+        ],
+        "auto_approve_if_all_met": true,
+        "typical_turnaround_days": 3
+      },
+      {
+        "rule_id": "PA-PT-001",
+        "procedure_code": "97110",
+        "procedure_description": "Therapeutic exercise / physical therapy",
+        "requires_prior_auth": false,
+        "category": "Physical Therapy",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "visit_limit",
+            "description": "First 12 visits per plan year do not require authorization; visits beyond 12 require auth with documented functional progress",
+            "required": false
+          }
+        ],
+        "auto_approve_if_all_met": true,
+        "typical_turnaround_days": 0
+      }
+    ]
+  }

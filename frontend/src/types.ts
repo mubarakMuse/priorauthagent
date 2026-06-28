@@ -13,11 +13,23 @@ export interface Medication {
   dosage: string | null
 }
 
+export interface ClinicalEvidence {
+  conservative_therapy_weeks: number | null
+  conservative_therapy_types: string[]
+  imaging_studies: { modality: string; body_part: string | null; finding: string | null }[]
+  clinical_findings: string[]
+  red_flag_symptoms: string[]
+  prior_treatments_failed: string[]
+  pt_visit_count: number | null
+  prior_injection_count: number | null
+}
+
 export interface ClinicalExtraction {
   diagnoses: Diagnosis[]
   procedures: Procedure[]
   medications: Medication[]
   patient_summary: string
+  clinical_evidence?: ClinicalEvidence
 }
 
 export interface PayerRule {
@@ -26,6 +38,7 @@ export interface PayerRule {
   description: string
   procedure_cpt: string
   required_diagnosis_icd10: string | null
+  allowed_icd10_codes?: string[]
   requires_prior_auth: boolean
 }
 
@@ -64,12 +77,49 @@ export interface PipelineEval {
   retry_feedback: string | null
 }
 
+export interface CriterionEval {
+  criterion_id: string
+  criterion_type: string
+  description: string
+  required: boolean
+  status: string
+  detail: string
+}
+
+export interface RuleCriteriaResult {
+  rule_id: string
+  criteria: CriterionEval[]
+  required_met: number
+  required_total: number
+  optional_met: number
+  optional_total: number
+  readiness: string
+}
+
+export interface CriteriaValidationResult {
+  rules: RuleCriteriaResult[]
+  summary: string
+}
+
+export interface RetrievedPolicyChunk {
+  rule_id: string
+  procedure_cpt: string
+  description: string
+  retrieval_score: number
+  source: string
+}
+
+import type { PolicyOverview } from "./types/policy"
+
 export interface PipelineResponse {
   extraction: ClinicalExtraction
   matched_rules: PayerRule[]
   prior_auth_request: PriorAuthRequest | null
   evaluation: PipelineEval | null
   generation_attempts: number
+  policy?: PolicyOverview | null
+  criteria_validation?: CriteriaValidationResult | null
+  retrieved_policy_chunks?: RetrievedPolicyChunk[]
 }
 
 export type InputMode = "note" | "pdf"
