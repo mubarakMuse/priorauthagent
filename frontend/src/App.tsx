@@ -1,9 +1,25 @@
 import { useState } from "react";
 import type { PipelineResponse } from "./types";
 import "./App.css";
-const API_URL = "http://localhost:8000/api/process";
-const PDF_API_URL = "http://localhost:8000/api/process-pdf";
+const API_BASE = import.meta.env.VITE_API_BASE ?? ""
+const API_URL = `${API_BASE}/api/process`
+const PDF_API_URL = `${API_BASE}/api/process-pdf`
 
+
+const parseErrorDetail = async (response: Response, fallback: string): Promise<string> => {
+  const contentType = response.headers.get("content-type") ?? ""
+  if (contentType.includes("application/json")) {
+    const err = await response.json()
+    return err.detail || fallback
+  }
+
+  const text = await response.text()
+  if (text.includes("504 Gateway Time-out")) {
+    return "The API timed out — the server may still be starting. Try again in a minute."
+  }
+
+  return text.slice(0, 200) || `${fallback} (HTTP ${response.status})`
+}
 
 const SAMPLE_NOTE = `Patient: 58yo male
 Chief complaint: Progressive knee pain, 6 months
@@ -41,8 +57,7 @@ const [selectedFile, setSelectedFile] = useState<File | null>(null);
       });
   
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || "PDF upload failed");
+        throw new Error(await parseErrorDetail(response, "PDF upload failed"))
       }
   
       const data: PipelineResponse = await response.json();
@@ -72,8 +87,7 @@ const [selectedFile, setSelectedFile] = useState<File | null>(null);
       });
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || "Request failed");
+        throw new Error(await parseErrorDetail(response, "Request failed"))
       }
 
       const data: PipelineResponse = await response.json();

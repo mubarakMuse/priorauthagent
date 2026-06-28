@@ -60,7 +60,24 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`).
+Open the URL Vite prints (usually `http://localhost:5173`). The dev server proxies `/api` to the backend.
+
+## AWS deployment (Terraform)
+
+See [infra/README.md](infra/README.md) for production infrastructure as code:
+
+- **ECS Fargate** — FastAPI API container
+- **ALB** — long-running LLM requests (120s timeout)
+- **S3 + CloudFront** — React frontend, `/api/*` routed to the ALB
+- **Secrets Manager** — `ANTHROPIC_API_KEY`
+- **VPC** — private subnets + NAT for ECS tasks
+
+```bash
+cd infra/terraform
+cp terraform.tfvars.example terraform.tfvars   # set anthropic_api_key
+terraform init && terraform apply
+# then deploy API + frontend — see infra/README.md
+```
 
 ## Production next steps
 

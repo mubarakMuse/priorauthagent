@@ -1,16 +1,24 @@
-from fastapi import FastAPI, HTTPException
+import os
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+
+from ingest import extract_text_from_pdf
 from models import PipelineRequest, PipelineResponse
 from pipeline import run_pipeline
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from ingest import extract_text_from_pdf
 
 app = FastAPI(title="Prior Auth Agent")
 
-# CORS — needed for React frontend in Step 6
+_default_origins = "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5174", "http://localhost:3000"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,0 +1,19 @@
+aws_region         = "us-east-1"
+project_name       = "priorauth"
+environment        = "prod"
+
+# Required — never commit real values; use terraform.tfvars (gitignored) or:
+# export TF_VAR_anthropic_api_key="sk-..."
+anthropic_api_key  = "REPLACE_ME"
+
+# Optional custom domain (ACM cert must be in us-east-1 for CloudFront)
+# domain_name          = "app.example.com"
+# acm_certificate_arn  = "arn:aws:acm:us-east-1:123456789012:certificate/..."
+
+# Cost vs security: set enable_nat_gateway = false to run tasks in public subnets (~$32/mo savings)
+enable_nat_gateway = true
+single_nat_gateway = true
+
+api_desired_count = 2
+api_cpu           = 512
+api_memory        = 1024
