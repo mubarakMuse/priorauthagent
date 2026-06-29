@@ -2,11 +2,14 @@ import { useMemo, useState } from "react"
 import { processClinicalNote, processPdf } from "./api/client"
 import { PipelineProgress, usePipelineProgress } from "./components/demo/PipelineProgress"
 import { PolicyConfigModal } from "./components/demo/PolicyConfigModal"
+import { SimpleDemoPanel } from "./components/demo/SimpleDemoPanel"
 import { WorkflowExplainerModal } from "./components/demo/WorkflowExplainerModal"
 import { InputPanel } from "./components/input/InputPanel"
 import { RulesEditor } from "./components/input/RulesEditor"
 import { Header } from "./components/layout/Header"
 import { ResultsView } from "./components/results/ResultsView"
+import { DEFAULT_SCENARIO, DEMO_SCENARIOS } from "./constants/demoScenarios"
+import { loadDemoMode, saveDemoMode, type DemoExperienceMode } from "./constants/demoMode"
 import { DEFAULT_RULES_JSON } from "./constants/defaultRules"
 import type { InputMode, PipelineResponse } from "./types"
 import type { DemoScenario, PolicyOverview } from "./types/policy"
@@ -17,10 +20,12 @@ type DemoPhase = "input" | "running" | "results"
 const App = () => {
   const initialRules = useMemo(() => parseRulesJson(DEFAULT_RULES_JSON), [])
 
+  const [demoMode, setDemoMode] = useState<DemoExperienceMode>(loadDemoMode)
   const [phase, setPhase] = useState<DemoPhase>("input")
   const [mode, setMode] = useState<InputMode>("note")
-  const [note, setNote] = useState("")
-  const [expectedRuleId, setExpectedRuleId] = useState<string | null>(null)
+  const [note, setNote] = useState(DEFAULT_SCENARIO.note)
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(DEFAULT_SCENARIO.id)
+  const [expectedRuleId, setExpectedRuleId] = useState<string | null>(DEFAULT_SCENARIO.expectedRuleId)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [result, setResult] = useState<PipelineResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -45,21 +50,48 @@ const App = () => {
     }
   }, [rulesJson, rulesValid])
 
+  const handleDemoModeChange = (nextMode: DemoExperienceMode) => {
+    setDemoMode(nextMode)
+    saveDemoMode(nextMode)
+
+    if (nextMode === "simple" && !note.trim()) {
+      setNote(DEFAULT_SCENARIO.note)
+      setSelectedScenarioId(DEFAULT_SCENARIO.id)
+      setExpectedRuleId(DEFAULT_SCENARIO.expectedRuleId)
+    }
+  }
+
   const handleLoadScenario = (scenario: DemoScenario) => {
     setNote(scenario.note)
+    setSelectedScenarioId(scenario.id)
     setExpectedRuleId(scenario.expectedRuleId)
     setMode("note")
     setSelectedFile(null)
     setError(null)
   }
 
-  const handleTryAgain = () => {
+  const handleNoteChange = (value: string) => {
+    setNote(value)
+    setExpectedRuleId(null)
+    setSelectedScenarioId(null)
+  }
+
+  const resetToInput = () => {
     setPhase("input")
     setResult(null)
     setError(null)
-    setNote("")
     setSelectedFile(null)
+
+    if (demoMode === "simple") {
+      setNote(DEFAULT_SCENARIO.note)
+      setSelectedScenarioId(DEFAULT_SCENARIO.id)
+      setExpectedRuleId(DEFAULT_SCENARIO.expectedRuleId)
+      return
+    }
+
+    setNote("")
     setExpectedRuleId(null)
+    setSelectedScenarioId(null)
   }
 
   const handleSubmitNote = async () => {
@@ -87,6 +119,7 @@ const App = () => {
     setError(null)
     setResult(null)
     setExpectedRuleId(null)
+    setSelectedScenarioId(null)
 
     try {
       const data = await processPdf(selectedFile, activeRulesData)
@@ -104,9 +137,14 @@ const App = () => {
     setShowHelpModal(true)
   }
 
+  const selectedScenario =
+    DEMO_SCENARIOS.find((scenario) => scenario.id === selectedScenarioId) ?? null
+
   return (
     <div className="gradient-bg min-h-screen">
       <Header
+        demoMode={demoMode}
+        onDemoModeChange={handleDemoModeChange}
         onOpenHelp={() => {
           setExplainStep(null)
           setShowHelpModal(true)
@@ -127,7 +165,19 @@ const App = () => {
           </div>
         )}
 
-        {phase === "input" && (
+        {phase === "input" && demoMode === "simple" && (
+          <SimpleDemoPanel
+            policy={policy}
+            note={note}
+            selectedScenarioId={selectedScenarioId}
+            onNoteChange={handleNoteChange}
+            onLoadScenario={handleLoadScenario}
+            onSubmit={handleSubmitNote}
+            rulesValid={rulesValid}
+          />
+        )}
+
+        {phase === "input" && demoMode === "advanced" && (
           <>
             <RulesEditor
               rulesJson={rulesJson}
@@ -140,10 +190,7 @@ const App = () => {
               mode={mode}
               onModeChange={setMode}
               note={note}
-              onNoteChange={(value) => {
-                setNote(value)
-                setExpectedRuleId(null)
-              }}
+              onNoteChange={handleNoteChange}
               selectedFile={selectedFile}
               onFileChange={setSelectedFile}
               onSubmitNote={handleSubmitNote}
@@ -166,8 +213,9 @@ const App = () => {
             result={result}
             policy={result.policy ?? policy}
             expectedRuleId={expectedRuleId}
+            selectedScenario={selectedScenario}
             onExplainStep={handleExplainStep}
-            onTryAgain={handleTryAgain}
+            onTryAgain={resetToInput}
           />
         )}
       </main>
@@ -185,6 +233,7 @@ const App = () => {
         isOpen={showPolicyModal}
         onClose={() => setShowPolicyModal(false)}
         policy={policy}
+        plainEnglish={demoMode === "simple"}
         rulesSource={
           rulesValid && rulesJson.trim() === DEFAULT_RULES_JSON.trim() ? "sample" : "custom"
         }

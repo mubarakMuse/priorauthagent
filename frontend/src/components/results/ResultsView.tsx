@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { PipelineResponse } from "../../types"
-import type { PolicyOverview } from "../../types/policy"
+import type { DemoScenario, PolicyOverview } from "../../types/policy"
 import { downloadPortfolioPdf } from "../../utils/exportPortfolioPdf"
 import { CriteriaCard, PolicyRetrievalNote } from "./CriteriaCard"
 import { ExtractionCard } from "./ExtractionCard"
@@ -12,6 +12,7 @@ type ResultsViewProps = {
   result: PipelineResponse
   policy: PolicyOverview | null
   expectedRuleId?: string | null
+  selectedScenario?: DemoScenario | null
   onExplainStep: (step: number) => void
   onTryAgain: () => void
 }
@@ -19,9 +20,11 @@ type ResultsViewProps = {
 const ResultSummary = ({
   result,
   expectedRuleId,
+  selectedScenario,
 }: {
   result: PipelineResponse
   expectedRuleId?: string | null
+  selectedScenario?: DemoScenario | null
 }) => {
   const matchedIds = result.matched_rules.map((rule) => rule.id)
   const hasAuthDraft = Boolean(result.prior_auth_request)
@@ -32,13 +35,13 @@ const ResultSummary = ({
 
   if (matchedIds.length === 0) {
     headline = "No payer rules matched"
-    detail = "Extraction succeeded but no procedures matched the loaded policy."
+    detail = "We read the note but didn't find a procedure that matches this payer's policy."
   } else if (hasAuthDraft) {
-    headline = `Prior auth draft generated`
-    detail = `Matched ${matchedIds.join(", ")} · ${Math.round(confidence * 100)}% confidence`
+    headline = "Prior auth draft ready"
+    detail = `The note supports a prior auth request · ${Math.round(confidence * 100)}% confidence the draft matches the note`
   } else {
-    headline = "Rule matched — no auth required"
-    detail = `Matched ${matchedIds.join(", ")} but prior auth is not required.`
+    headline = "Matched — no prior auth needed"
+    detail = "The procedure is covered without a separate authorization for this payer."
   }
 
   const expectedMatch =
@@ -50,6 +53,11 @@ const ResultSummary = ({
     <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 px-5 py-4">
       <h2 className="text-base font-semibold text-emerald-900">{headline}</h2>
       <p className="mt-1 text-sm text-emerald-800/90">{detail}</p>
+      {selectedScenario && (
+        <p className="mt-2 text-xs text-emerald-800/80">
+          Demo case: {selectedScenario.title} — {selectedScenario.expectedOutcome}
+        </p>
+      )}
       {expectedMatch && (
         <p className="mt-2 text-xs font-medium text-emerald-700">
           ✓ Expected rule {expectedRuleId}
@@ -68,6 +76,7 @@ export const ResultsView = ({
   result,
   policy,
   expectedRuleId,
+  selectedScenario,
   onExplainStep,
   onTryAgain,
 }: ResultsViewProps) => {
@@ -119,7 +128,11 @@ export const ResultsView = ({
       </div>
     )}
 
-    <ResultSummary result={result} expectedRuleId={expectedRuleId} />
+    <ResultSummary
+      result={result}
+      expectedRuleId={expectedRuleId}
+      selectedScenario={selectedScenario}
+    />
 
     <ExtractionCard
       extraction={result.extraction}

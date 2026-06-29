@@ -23,32 +23,34 @@ This is a **demo / prototype**, not a certified medical device. Always have a cl
 
 ## How the pipeline works
 
+Orchestration runs as a **LangGraph** state machine (`priorauth/pipeline/graph.py`). LLM steps use **LangChain** chains with Pydantic structured output (`priorauth/llm/chains/`). Rule matching and criteria validation stay in deterministic Python.
+
 ```
 Clinical note (paste / PDF)
         │
         ▼
-   Extract (LLM) ──► Match rules (CPT + ICD-10)
+   Extract (LangChain) ──► Match rules (CPT + ICD-10)
         │                    │
         │                    ▼
         │           Validate criteria (therapy, imaging, exam…)
         │                    │
-        └──────────► Generate PA draft (LLM + policy context)
+        └──────────► Generate PA draft (LangChain + policy context)
                            │
                            ▼
-                    Evaluate (groundedness + retry if low confidence)
+                    Evaluate (code + LangChain judge)
                            │
-                           ▼
+                           ▼ (retry loop if confidence < 80%)
                     Results + Export PDF
 ```
 
 | Step | Who decides | What happens |
 |------|-------------|--------------|
-| Extract | LLM | Pull structured data from free text |
+| Extract | LangChain + Claude | Pull structured data from free text |
 | Match rules | Code | CPT + allowed ICD-10 from policy |
 | Validate criteria | Code | Check each policy requirement against extracted evidence |
 | Retrieve policy (RAG-lite) | Code | Pull relevant policy chunks for generation |
-| Generate | LLM | Draft prior auth letter from extraction + rules |
-| Evaluate | Code + LLM judge | Score confidence; retry up to 2 times if below 80% |
+| Generate | LangChain + Claude | Draft prior auth letter from extraction + rules |
+| Evaluate | Code + LangChain judge | Score confidence; graph retries up to 2 times if below 80% |
 
 ---
 
@@ -68,8 +70,12 @@ Clinical note (paste / PDF)
 priorAuth/
 ├── priorauth/              # Python backend (FastAPI)
 │   ├── api/routes.py       # HTTP endpoints
-│   ├── pipeline/runner.py  # Orchestrates the full flow
-│   ├── services/           # Extraction, rules, criteria, generation, PDF export…
+│   ├── pipeline/
+│   │   ├── graph.py        # LangGraph orchestration
+│   │   ├── nodes.py        # Pipeline step nodes
+│   │   └── runner.py       # Public run_pipeline() entry
+│   ├── llm/chains/         # LangChain chains (extract, generate, evaluate)
+│   ├── services/           # Rules, criteria, PDF export…
 │   ├── models/             # Pydantic schemas
 │   ├── llm/prompts.py      # LLM prompt templates
 │   └── data/rules.json     # Default payer rules (Meridian Health Plan)
@@ -163,7 +169,7 @@ pip install -r requirements-dev.txt
 pytest --cov=priorauth --cov-report=term-missing
 ```
 
-27 tests covering rules matching, criteria validation, jobs, API routes, PDF export, and evaluation.
+30 tests covering rules matching, criteria validation, jobs, API routes, PDF export, evaluation, and LangGraph pipeline routing.
 
 ### Frontend (vitest)
 
@@ -277,7 +283,7 @@ What you have now is a strong **demo**. To move toward real clinical use, priori
 
 ## Tech stack
 
-- **Backend:** Python 3.12, FastAPI, Pydantic, Anthropic Claude, ReportLab (PDF)
+- **Backend:** Python 3.12, FastAPI, Pydantic, **LangChain** (LLM chains + structured output), **LangGraph** (pipeline orchestration), Anthropic Claude, ReportLab (PDF)
 - **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4
 - **AWS:** ECS Fargate, ALB, ECR, S3, CloudFront, Secrets Manager, VPC + NAT
 - **IaC:** Terraform
